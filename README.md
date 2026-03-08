@@ -1,13 +1,13 @@
-Пример STT для Linux на C++ с моделью GigaAM v3 RNN-T через ONNX Runtime.
+Пример STT для Linux на C++ с моделью GigaAM v3 E2E RNN-T через ONNX Runtime.
 
 Текущая версия примера ориентирована на:
 
-- `v3_rnnt_encoder.int8.onnx`
-- `v3_rnnt_decoder.int8.onnx`
-- `v3_rnnt_joint.int8.onnx`
-- `v3_vocab.txt`
+- `v3_e2e_rnnt_encoder.int8.onnx`
+- `v3_e2e_rnnt_decoder.int8.onnx`
+- `v3_e2e_rnnt_joint.int8.onnx`
+- `v3_e2e_rnnt_vocab.txt`
 
-Это практичнее, чем старый минимальный CTC-вариант: в статье на Habr лучшие результаты были именно у `gigaam-v3-e2e-rnnt`, а обычный `v3_rnnt` остаётся самым удобным путём для небольшого C++-демо, потому что у него есть явный символьный словарь без внешнего токенизатора.
+Это уже вариант ближе к тому, что даёт лучшее качество в статье на Habr: `gigaam-v3-e2e-rnnt`.
 
 Источники:
 
@@ -54,6 +54,8 @@ cmake -S . -B build \
   -DONNXRUNTIME_ROOT=/path/to/onnxruntime-linux-x64-1.xx.x
 ```
 
+Для helper-скриптов ниже нужен `python3`.
+
 Ожидаемая структура локального ONNX Runtime:
 
 - `ONNXRUNTIME_ROOT/include`
@@ -67,12 +69,33 @@ https://huggingface.co/istupakov/gigaam-v3-onnx
 
 Нужны файлы:
 
-- `v3_rnnt_encoder.int8.onnx`
-- `v3_rnnt_decoder.int8.onnx`
-- `v3_rnnt_joint.int8.onnx`
-- `v3_vocab.txt`
+- `v3_e2e_rnnt_encoder.int8.onnx`
+- `v3_e2e_rnnt_decoder.int8.onnx`
+- `v3_e2e_rnnt_joint.int8.onnx`
+- `v3_e2e_rnnt_vocab.txt`
 
 ## Режимы
+
+### Публичные WAV-примеры
+
+В репозитории есть wrapper-скрипт, который скачивает небольшой публичный набор WAV из `istupakov/russian_librispeech` и сразу готовит `manifest.tsv`:
+
+```bash
+./scripts/download_public_test_wavs.sh
+```
+
+По умолчанию он скачивает 3 файла в `data/public_test_wavs`. Можно выбрать другую папку и лимит:
+
+```bash
+./scripts/download_public_test_wavs.sh data/public_test_wavs 5
+```
+
+После этого доступны обе проверки:
+
+```bash
+./build/gigaam_asr infer data/public_test_wavs/audio/sample_001.wav
+./build/gigaam_asr eval-ru data/public_test_wavs/manifest.tsv
+```
 
 ### 1. Прогон одного WAV
 
@@ -85,14 +108,14 @@ https://huggingface.co/istupakov/gigaam-v3-onnx
 Если модели лежат в отдельной папке:
 
 ```bash
-./build/gigaam_asr infer sample.wav /path/to/model_dir /path/to/v3_vocab.txt
+./build/gigaam_asr infer sample.wav /path/to/model_dir /path/to/v3_e2e_rnnt_vocab.txt
 ```
 
 Где `/path/to/model_dir` содержит:
 
-- `v3_rnnt_encoder.int8.onnx`
-- `v3_rnnt_decoder.int8.onnx`
-- `v3_rnnt_joint.int8.onnx`
+- `v3_e2e_rnnt_encoder.int8.onnx`
+- `v3_e2e_rnnt_decoder.int8.onnx`
+- `v3_e2e_rnnt_joint.int8.onnx`
 
 Для совместимости старый короткий вызов тоже оставлен:
 
@@ -119,6 +142,8 @@ python scripts/prepare_russian_librispeech_subset.py data/ru_test_subset 10
 ```bash
 ./build/gigaam_asr eval-ru data/ru_test_subset/manifest.tsv
 ```
+
+Для `eval-ru` метрики считаются по нормализованному тексту: приводятся к нижнему регистру, `ё` сводится к `е`, пунктуация и прочие не-буквенные разделители не учитываются. Это делает сравнение корректным для `e2e_rnnt`, который возвращает уже более "человеческий" текст с пунктуацией и регистром.
 
 Режим `eval-ru` печатает:
 

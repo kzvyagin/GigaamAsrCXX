@@ -264,14 +264,77 @@ int FindBlankId(const std::vector<std::string> &id_to_token) {
     return static_cast<int>(id_to_token.size()) - 1;
 }
 
+bool IsBlankToken(const std::string &token) {
+    return token == "<blk>" || token == "<blank>";
+}
+
+bool IsSpecialToken(const std::string &token) {
+    return IsBlankToken(token) || token == "<unk>";
+}
+
+std::string CollapseAsciiWhitespace(const std::string &text) {
+    std::string out;
+    out.reserve(text.size());
+
+    bool previous_was_space = true;
+    for (unsigned char ch : text) {
+        if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+            if (!previous_was_space) {
+                out.push_back(' ');
+            }
+            previous_was_space = true;
+            continue;
+        }
+
+        out.push_back(static_cast<char>(ch));
+        previous_was_space = false;
+    }
+
+    if (!out.empty() && out.back() == ' ') {
+        out.pop_back();
+    }
+    return out;
+}
+
+std::string CleanupDecodedTextSpacing(const std::string &text) {
+    static const std::string kClosingPunctuation = ",.!?:;)]}";
+
+    std::string out;
+    out.reserve(text.size());
+    for (unsigned char ch : text) {
+        if (!out.empty() &&
+            kClosingPunctuation.find(out.back()) != std::string::npos &&
+            ch != ' ' &&
+            kClosingPunctuation.find(ch) == std::string::npos) {
+            out.push_back(' ');
+        }
+        if (ch == ' ' && !out.empty() && kClosingPunctuation.find(out.back()) != std::string::npos) {
+            continue;
+        }
+        if (kClosingPunctuation.find(ch) != std::string::npos && !out.empty() && out.back() == ' ') {
+            out.pop_back();
+        }
+        out.push_back(static_cast<char>(ch));
+    }
+
+    return CollapseAsciiWhitespace(out);
+}
+
 std::string PrintableToken(const std::string &token) {
-    if (token == "<blank>" || token == "<blk>") {
+    if (IsSpecialToken(token)) {
         return "";
     }
     if (token == "<space>" || token == "▁") {
         return " ";
     }
-    return token;
+
+    std::string piece = token;
+    size_t position = 0;
+    while ((position = piece.find("▁", position)) != std::string::npos) {
+        piece.replace(position, std::string("▁").size(), " ");
+        position += 1;
+    }
+    return piece;
 }
 
 std::string DecodeRnntTokens(const std::vector<int> &tokens, const std::vector<std::string> &id_to_token) {
@@ -282,7 +345,7 @@ std::string DecodeRnntTokens(const std::vector<int> &tokens, const std::vector<s
         }
         text += PrintableToken(id_to_token[static_cast<size_t>(id)]);
     }
-    return text;
+    return CleanupDecodedTextSpacing(text);
 }
 
 double HzToMelHtk(double freq) {
@@ -679,10 +742,10 @@ void PrintUsage(const char *program_name) {
         << "\n"
         << "Default model dir: .\n"
         << "Expected RNNT files in model dir:\n"
-        << "  v3_rnnt_encoder.int8.onnx\n"
-        << "  v3_rnnt_decoder.int8.onnx\n"
-        << "  v3_rnnt_joint.int8.onnx\n"
-        << "Default tokens: v3_vocab.txt\n"
+        << "  v3_e2e_rnnt_encoder.int8.onnx\n"
+        << "  v3_e2e_rnnt_decoder.int8.onnx\n"
+        << "  v3_e2e_rnnt_joint.int8.onnx\n"
+        << "Default tokens: v3_e2e_rnnt_vocab.txt\n"
         << "\n"
         << "Manifest format for eval-ru:\n"
         << "  path/to/audio.wav<TAB>reference text\n";
@@ -710,9 +773,9 @@ public:
         session_options_.SetIntraOpNumThreads(1);
         session_options_.SetInterOpNumThreads(1);
 
-        const std::filesystem::path encoder_file = model_dir / "v3_rnnt_encoder.int8.onnx";
-        const std::filesystem::path decoder_file = model_dir / "v3_rnnt_decoder.int8.onnx";
-        const std::filesystem::path joint_file = model_dir / "v3_rnnt_joint.int8.onnx";
+        const std::filesystem::path encoder_file = model_dir / "v3_e2e_rnnt_encoder.int8.onnx";
+        const std::filesystem::path decoder_file = model_dir / "v3_e2e_rnnt_decoder.int8.onnx";
+        const std::filesystem::path joint_file = model_dir / "v3_e2e_rnnt_joint.int8.onnx";
 
         for (const auto &path : {encoder_file, decoder_file, joint_file, tokens_file}) {
             if (!std::filesystem::exists(path)) {
@@ -831,6 +894,70 @@ std::vector<uint32_t> Utf8ToCodepoints(const std::string &text) {
     return result;
 }
 
+std::string CodepointsToUtf8(const std::vector<uint32_t> &codepoints) {
+    std::string text;
+    for (uint32_t cp : codepoints) {
+        if (cp <= 0x7F) {
+            text.push_back(static_cast<char>(cp));
+        } else if (cp <= 0x7FF) {
+            text.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            text.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else if (cp <= 0xFFFF) {
+            text.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            text.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else {
+            text.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+            text.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
+    }
+    return text;
+}
+
+uint32_t NormalizeRussianCodepoint(uint32_t cp) {
+    if (cp >= 'A' && cp <= 'Z') {
+        return cp + 32;
+    }
+    if (cp == 0x0401 || cp == 0x0451) {
+        return 0x0435;  // ё/Ё -> е
+    }
+    if (cp >= 0x0410 && cp <= 0x042F) {
+        return cp + 32;
+    }
+    return cp;
+}
+
+bool IsNormalizedWordCodepoint(uint32_t cp) {
+    return (cp >= 'a' && cp <= 'z') ||
+           (cp >= '0' && cp <= '9') ||
+           (cp >= 0x0430 && cp <= 0x044F);
+}
+
+std::string NormalizeTextForMetrics(const std::string &text) {
+    const auto codepoints = Utf8ToCodepoints(text);
+
+    std::vector<uint32_t> normalized;
+    normalized.reserve(codepoints.size());
+
+    bool pending_space = false;
+    for (uint32_t cp : codepoints) {
+        cp = NormalizeRussianCodepoint(cp);
+        if (IsNormalizedWordCodepoint(cp)) {
+            if (pending_space && !normalized.empty()) {
+                normalized.push_back(' ');
+            }
+            normalized.push_back(cp);
+            pending_space = false;
+        } else {
+            pending_space = true;
+        }
+    }
+
+    return CodepointsToUtf8(normalized);
+}
+
 template <typename T>
 size_t EditDistance(const std::vector<T> &a, const std::vector<T> &b) {
     std::vector<size_t> prev(b.size() + 1);
@@ -893,10 +1020,13 @@ std::vector<ManifestEntry> LoadManifest(const std::filesystem::path &manifest_fi
 }
 
 void UpdateTotals(EvalTotals &totals, const std::string &reference, const std::string &hypothesis) {
-    const auto ref_words = SplitWords(reference);
-    const auto hyp_words = SplitWords(hypothesis);
-    const auto ref_chars = Utf8ToCodepoints(reference);
-    const auto hyp_chars = Utf8ToCodepoints(hypothesis);
+    const std::string normalized_reference = NormalizeTextForMetrics(reference);
+    const std::string normalized_hypothesis = NormalizeTextForMetrics(hypothesis);
+
+    const auto ref_words = SplitWords(normalized_reference);
+    const auto hyp_words = SplitWords(normalized_hypothesis);
+    const auto ref_chars = Utf8ToCodepoints(normalized_reference);
+    const auto hyp_chars = Utf8ToCodepoints(normalized_hypothesis);
 
     totals.utterances += 1;
     totals.word_edits += EditDistance(ref_words, hyp_words);
@@ -957,7 +1087,8 @@ int main(int argc, char *argv[]) {
             }
             const std::filesystem::path wav_file = argv[2];
             const std::filesystem::path model_dir = argc >= 4 ? std::filesystem::path(argv[3]) : std::filesystem::path(".");
-            const std::filesystem::path tokens_file = argc >= 5 ? std::filesystem::path(argv[4]) : std::filesystem::path("v3_vocab.txt");
+            const std::filesystem::path tokens_file =
+                argc >= 5 ? std::filesystem::path(argv[4]) : std::filesystem::path("v3_e2e_rnnt_vocab.txt");
             return RunInferMode(wav_file, model_dir, tokens_file);
         }
 
@@ -968,7 +1099,8 @@ int main(int argc, char *argv[]) {
             }
             const std::filesystem::path manifest_file = argv[2];
             const std::filesystem::path model_dir = argc >= 4 ? std::filesystem::path(argv[3]) : std::filesystem::path(".");
-            const std::filesystem::path tokens_file = argc >= 5 ? std::filesystem::path(argv[4]) : std::filesystem::path("v3_vocab.txt");
+            const std::filesystem::path tokens_file =
+                argc >= 5 ? std::filesystem::path(argv[4]) : std::filesystem::path("v3_e2e_rnnt_vocab.txt");
             return RunEvalMode(manifest_file, model_dir, tokens_file);
         }
 
@@ -979,7 +1111,8 @@ int main(int argc, char *argv[]) {
 
         const std::filesystem::path wav_file = argv[1];
         const std::filesystem::path model_dir = argc >= 3 ? std::filesystem::path(argv[2]) : std::filesystem::path(".");
-        const std::filesystem::path tokens_file = argc >= 4 ? std::filesystem::path(argv[3]) : std::filesystem::path("v3_vocab.txt");
+        const std::filesystem::path tokens_file =
+            argc >= 4 ? std::filesystem::path(argv[3]) : std::filesystem::path("v3_e2e_rnnt_vocab.txt");
         return RunInferMode(wav_file, model_dir, tokens_file);
     } catch (const Ort::Exception &e) {
         std::cerr << "ONNX Runtime error: " << e.what() << std::endl;
