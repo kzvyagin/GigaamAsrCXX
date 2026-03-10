@@ -39,3 +39,10 @@
 
 # debug information files
 *.dwo
+
+# Local build and test artifacts
+/build*/
+/data/
+*.onnx
+*.wav
+*vocab*.txt
