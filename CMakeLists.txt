@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(gigaam_asr LANGUAGES CXX)
+project(gigaam LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
+include(CTest)
 
 option(GIGAAM_FETCH_ONNXRUNTIME "Download a prebuilt ONNX Runtime archive with FetchContent" ON)
 
@@ -44,11 +45,7 @@ if (GIGAAM_FETCH_ONNXRUNTIME)
     endif()
 
     FetchContent_Declare(onnxruntime_prebuilt ${_onnxruntime_fetch_args})
-    FetchContent_GetProperties(onnxruntime_prebuilt)
-    if (NOT onnxruntime_prebuilt_POPULATED)
-        FetchContent_Populate(onnxruntime_prebuilt)
-    endif()
-
+    FetchContent_MakeAvailable(onnxruntime_prebuilt)
     set(ONNXRUNTIME_ROOT "${onnxruntime_prebuilt_SOURCE_DIR}" CACHE PATH "Path to ONNX Runtime installation" FORCE)
 endif()
 
@@ -81,8 +78,85 @@ set_target_properties(onnxruntime PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
 )
 
-add_executable(gigaam_asr main.cpp)
+FetchContent_Declare(
+    CLI11
+    URL https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.4.2.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+)
+FetchContent_MakeAvailable(CLI11)
 
-target_link_libraries(gigaam_asr PRIVATE
+FetchContent_Declare(
+    cpphttplib
+    URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.15.3.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+)
+FetchContent_MakeAvailable(cpphttplib)
+
+FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+FetchContent_Declare(
+    miniaudio_src
+    URL https://github.com/mackron/miniaudio/archive/refs/tags/0.11.21.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+)
+FetchContent_MakeAvailable(miniaudio_src)
+
+find_package(OpenSSL REQUIRED)
+
+add_library(miniaudio INTERFACE)
+target_include_directories(miniaudio INTERFACE "${miniaudio_src_SOURCE_DIR}")
+
+add_library(cpphttplib INTERFACE)
+target_include_directories(cpphttplib INTERFACE "${cpphttplib_SOURCE_DIR}")
+target_compile_definitions(cpphttplib INTERFACE CPPHTTPLIB_OPENSSL_SUPPORT)
+target_link_libraries(cpphttplib INTERFACE OpenSSL::SSL OpenSSL::Crypto)
+
+set(GIGAAM_SOURCES
+    src/app/Ports.hpp
+    src/app/Services.cpp
+    src/app/Services.hpp
+    src/cli/main.cpp
+    src/domain/Assets.cpp
+    src/domain/Assets.hpp
+    src/domain/Audio.hpp
+    src/domain/Dataset.cpp
+    src/domain/Dataset.hpp
+    src/domain/Manifest.cpp
+    src/domain/Manifest.hpp
+    src/domain/Text.cpp
+    src/domain/Text.hpp
+    src/infra/asr/RnntRecognizer.cpp
+    src/infra/asr/RnntRecognizer.hpp
+    src/infra/audio/MiniaudioDecoder.cpp
+    src/infra/audio/MiniaudioDecoder.hpp
+    src/infra/datasets/RussianLibrispeechIndex.cpp
+    src/infra/datasets/RussianLibrispeechIndex.hpp
+    src/infra/download/HttplibHttpClient.cpp
+    src/infra/download/HttplibHttpClient.hpp
+)
+
+add_executable(gigaam ${GIGAAM_SOURCES})
+target_include_directories(gigaam PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(gigaam PRIVATE
+    CLI11::CLI11
+    cpphttplib
+    miniaudio
+    nlohmann_json::nlohmann_json
     onnxruntime
 )
+
+if (BUILD_TESTING)
+    add_executable(gigaam_domain_tests
+        tests/DomainTests.cpp
+        src/domain/Assets.cpp
+        src/domain/Manifest.cpp
+        src/domain/Text.cpp
+    )
+    target_include_directories(gigaam_domain_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME gigaam_domain_tests COMMAND gigaam_domain_tests)
+endif()

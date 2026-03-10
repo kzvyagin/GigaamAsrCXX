@@ -1,157 +1,221 @@
-Пример STT для Linux на C++ с моделью GigaAM v3 E2E RNN-T через ONNX Runtime.
+# GigaAM CLI
 
-Текущая версия примера ориентирована на:
+Нативный C++ CLI для `GigaAM v3 E2E RNN-T` через ONNX Runtime.
+
+Текущая версия репозитория поддерживает только одну модель:
 
 - `v3_e2e_rnnt_encoder.int8.onnx`
 - `v3_e2e_rnnt_decoder.int8.onnx`
 - `v3_e2e_rnnt_joint.int8.onnx`
 - `v3_e2e_rnnt_vocab.txt`
 
-Это уже вариант ближе к тому, что даёт лучшее качество в статье на Habr: `gigaam-v3-e2e-rnnt`.
-
-Источники:
-
-- GigaAM: https://github.com/salute-developers/GigaAM
-- ONNX-конвертация GigaAM v3: https://huggingface.co/istupakov/gigaam-v3-onnx
-- Сравнение моделей: https://habr.com/ru/articles/1002260/
+Старые CTC/RNN-T без `e2e` из репозитория убраны намеренно.
 
 ## Что внутри
 
-- загрузка WAV;
-- ресемплинг в `16 kHz`;
-- вычисление `64-bin log-mel` признаков прямо в C++;
-- greedy RNN-T decoding через три ONNX-модели: `encoder`, `decoder`, `joint`.
+- единый бинарник `gigaam`
+- подкоманды для скачивания моделей и публичного русского набора
+- инференс одного аудиофайла
+- оценка по `manifest.tsv`
+- модульная архитектура: `domain`, `app`, `infra`, `cli`
 
-`kaldi-native-fbank` больше не нужен: препроцессор `gigaam-v3` реализован прямо в `main.cpp`.
+## Зависимости
+
+Нужно локально иметь:
+
+- `cmake >= 3.16`
+- C++17-компилятор
+- `OpenSSL` dev package
+- `curl`
+
+Через `FetchContent` проект подтягивает:
+
+- `ONNX Runtime`
+- `CLI11`
+- `cpp-httplib`
+- `nlohmann/json`
+- `miniaudio`
+
+`miniaudio` используется для входных форматов:
+
+- `wav`
+- `flac`
+- `mp3`
+- `ogg`
 
 ## Сборка
-
-По умолчанию ONNX Runtime скачивается через `FetchContent` как готовый бинарный архив:
 
 ```bash
 cmake -S . -B build
 cmake --build build -j
 ```
 
-По умолчанию используется `ONNXRUNTIME_VERSION=1.18.1`. Если нужна другая версия или свой архив:
-
-```bash
-cmake -S . -B build -DONNXRUNTIME_VERSION=1.18.1
-```
-
-Или явно свой URL:
-
-```bash
-cmake -S . -B build \
-  -DONNXRUNTIME_URL=https://github.com/microsoft/onnxruntime/releases/download/v1.18.1/onnxruntime-linux-x64-1.18.1.tgz
-```
-
-Если автозагрузка не нужна:
+Если нужно использовать локальный ONNX Runtime:
 
 ```bash
 cmake -S . -B build \
   -DGIGAAM_FETCH_ONNXRUNTIME=OFF \
-  -DONNXRUNTIME_ROOT=/path/to/onnxruntime-linux-x64-1.xx.x
+  -DONNXRUNTIME_ROOT=/path/to/onnxruntime
+cmake --build build -j
 ```
 
-Для helper-скриптов ниже нужен `python3`.
+## Quick Start
 
-Ожидаемая структура локального ONNX Runtime:
+### У меня есть MP3 и я хочу получить транскрибацию
 
-- `ONNXRUNTIME_ROOT/include`
-- `ONNXRUNTIME_ROOT/lib/libonnxruntime.so`
-
-## Модели
-
-Скачать ONNX-артефакты можно из:
-
-https://huggingface.co/istupakov/gigaam-v3-onnx
-
-Нужны файлы:
-
-- `v3_e2e_rnnt_encoder.int8.onnx`
-- `v3_e2e_rnnt_decoder.int8.onnx`
-- `v3_e2e_rnnt_joint.int8.onnx`
-- `v3_e2e_rnnt_vocab.txt`
-
-## Режимы
-
-### Публичные WAV-примеры
-
-В репозитории есть wrapper-скрипт, который скачивает небольшой публичный набор WAV из `istupakov/russian_librispeech` и сразу готовит `manifest.tsv`:
+Если ты только что скачал репозиторий и у тебя есть файл `my_audio.mp3`, минимальный сценарий такой:
 
 ```bash
-./scripts/download_public_test_wavs.sh
+git clone <URL_ЭТОГО_РЕПОЗИТОРИЯ>
+cd GigaamAsrCXX
+
+cmake -S . -B build
+cmake --build build -j
+
+./build/gigaam models download
+./build/gigaam infer my_audio.mp3 --model-dir models/gigaam-v3-e2e-rnnt
 ```
 
-По умолчанию он скачивает 3 файла в `data/public_test_wavs`. Можно выбрать другую папку и лимит:
+На выходе CLI печатает только итоговый распознанный текст.
+
+Поддерживаются входные форматы:
+
+- `wav`
+- `flac`
+- `mp3`
+- `ogg`
+
+### Я хочу быстро проверить, что всё работает
 
 ```bash
-./scripts/download_public_test_wavs.sh data/public_test_wavs 5
+git clone <URL_ЭТОГО_РЕПОЗИТОРИЯ>
+cd GigaamAsrCXX
+
+cmake -S . -B build
+cmake --build build -j
+
+./build/gigaam models download
+./build/gigaam datasets download ru-public --limit 2
+
+./build/gigaam infer data/ru-public/audio/sample_001.wav --model-dir models/gigaam-v3-e2e-rnnt
+./build/gigaam eval data/ru-public/manifest.tsv --model-dir models/gigaam-v3-e2e-rnnt --verbose
 ```
 
-После этого доступны обе проверки:
+Ожидаемый результат:
+
+- `infer` печатает одну строку с транскрибацией
+- `eval` печатает `reference/hypothesis` и summary с `WER/CER`
+
+## Подкоманды
+
+### 1. Скачать модель
+
+По умолчанию модель скачивается в `models/gigaam-v3-e2e-rnnt`:
 
 ```bash
-./build/gigaam_asr infer data/public_test_wavs/audio/sample_001.wav
-./build/gigaam_asr eval-ru data/public_test_wavs/manifest.tsv
+./build/gigaam models download
 ```
 
-### 1. Прогон одного WAV
-
-Если файлы лежат рядом с бинарником или в текущей директории:
+Или в свою папку:
 
 ```bash
-./build/gigaam_asr infer sample.wav
+./build/gigaam models download --output-dir /path/to/models
 ```
 
-Если модели лежат в отдельной папке:
+Перекачать существующие файлы:
 
 ```bash
-./build/gigaam_asr infer sample.wav /path/to/model_dir /path/to/v3_e2e_rnnt_vocab.txt
+./build/gigaam models download --output-dir /path/to/models --force
 ```
 
-Где `/path/to/model_dir` содержит:
+### 2. Скачать публичный русский набор
 
-- `v3_e2e_rnnt_encoder.int8.onnx`
-- `v3_e2e_rnnt_decoder.int8.onnx`
-- `v3_e2e_rnnt_joint.int8.onnx`
-
-Для совместимости старый короткий вызов тоже оставлен:
+Подкоманда скачивает публичные примеры из `istupakov/russian_librispeech` и готовит `manifest.tsv`.
 
 ```bash
-./build/gigaam_asr sample.wav
+./build/gigaam datasets download ru-public
 ```
 
-### 2. Прогон русского тестового набора
-
-Бинарник умеет читать `manifest.tsv` в формате:
-
-```text
-relative/or/absolute/path.wav<TAB>reference text
-```
-
-Есть helper-скрипт для подготовки небольшого поднабора `istupakov/russian_librispeech`:
+Свой output dir и лимит:
 
 ```bash
-python scripts/prepare_russian_librispeech_subset.py data/ru_test_subset 10
+./build/gigaam datasets download ru-public \
+  --output-dir data/ru-public \
+  --limit 10
 ```
 
-После этого можно прогнать оценку:
+### 3. Прогнать один аудиофайл
 
 ```bash
-./build/gigaam_asr eval-ru data/ru_test_subset/manifest.tsv
+./build/gigaam infer sample.wav
 ```
 
-Для `eval-ru` метрики считаются по нормализованному тексту: приводятся к нижнему регистру, `ё` сводится к `е`, пунктуация и прочие не-буквенные разделители не учитываются. Это делает сравнение корректным для `e2e_rnnt`, который возвращает уже более "человеческий" текст с пунктуацией и регистром.
+Если модель лежит в отдельной папке:
 
-Режим `eval-ru` печатает:
+```bash
+./build/gigaam infer sample.wav --model-dir /path/to/models
+```
 
-- reference и hypothesis для каждого WAV;
-- итоговые `WER` и `CER` по всему manifest.
+### 4. Прогнать manifest
 
-## Ограничения
+```bash
+./build/gigaam eval data/ru-public/manifest.tsv --model-dir /path/to/models
+```
 
-- decoding пока greedy, без beam search;
-- пример проверялся как end-to-end smoke test, но качество на синтетическом TTS-аудио не показательно;
-- для честного сравнения качества лучше прогонять реальные русские WAV, а не `espeak-ng`.
+Для печати `reference/hypothesis` по каждому файлу:
+
+```bash
+./build/gigaam eval data/ru-public/manifest.tsv \
+  --model-dir /path/to/models \
+  --verbose
+```
+
+## Полный сценарий с нуля
+
+```bash
+cmake -S . -B build
+cmake --build build -j
+
+./build/gigaam models download
+./build/gigaam datasets download ru-public --limit 2
+
+./build/gigaam infer data/ru-public/audio/sample_001.wav
+./build/gigaam eval data/ru-public/manifest.tsv --model-dir models/gigaam-v3-e2e-rnnt --verbose
+```
+
+## Метрики
+
+`eval` считает:
+
+- `WER`
+- `CER`
+
+Перед сравнением текст нормализуется под русский кейс:
+
+- приводится к нижнему регистру
+- `ё` сводится к `е`
+- пунктуация и прочие не-буквенные разделители игнорируются
+
+Это позволяет корректно сравнивать `e2e_rnnt`, который возвращает более “человеческий” текст с регистром и пунктуацией.
+
+## Проверенная smoke-последовательность
+
+Было вручную прогнано:
+
+```bash
+./build-refactor/gigaam models download --output-dir /tmp/gigaam-models-e2e --force
+./build-refactor/gigaam datasets download ru-public --output-dir /tmp/gigaam-ru-public --limit 2 --force
+./build-refactor/gigaam infer /tmp/gigaam-ru-public/audio/sample_001.wav --model-dir /tmp/gigaam-models-e2e
+./build-refactor/gigaam eval /tmp/gigaam-ru-public/manifest.tsv --model-dir /tmp/gigaam-models-e2e --verbose
+```
+
+Результат smoke test:
+
+- `infer` вернул корректный текст для `sample_001.wav`
+- `eval` на 2 публичных файлах дал `WER=0%` и `CER=0%`
+
+## Источники
+
+- GigaAM: https://github.com/salute-developers/GigaAM
+- ONNX-конвертация: https://huggingface.co/istupakov/gigaam-v3-onnx
+- Публичный русский набор: https://huggingface.co/datasets/istupakov/russian_librispeech
