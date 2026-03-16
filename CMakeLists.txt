@@ -10,6 +10,11 @@ include(CTest)
 
 option(GIGAAM_FETCH_ONNXRUNTIME "Download a prebuilt ONNX Runtime archive with FetchContent" ON)
 
+set(GIGAAM_FETCHCONTENT_ARGS)
+if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+    list(APPEND GIGAAM_FETCHCONTENT_ARGS DOWNLOAD_EXTRACT_TIMESTAMP FALSE)
+endif()
+
 set(ONNXRUNTIME_VERSION "1.18.1" CACHE STRING "ONNX Runtime version to download when FetchContent is enabled")
 set(ONNXRUNTIME_URL "" CACHE STRING "Explicit URL to a prebuilt ONNX Runtime archive")
 set(ONNXRUNTIME_URL_HASH "" CACHE STRING "Optional URL_HASH for the ONNX Runtime archive")
@@ -37,8 +42,8 @@ if (GIGAAM_FETCH_ONNXRUNTIME)
 
     set(_onnxruntime_fetch_args
         URL "${ONNXRUNTIME_URL}"
-        DOWNLOAD_EXTRACT_TIMESTAMP FALSE
     )
+    list(APPEND _onnxruntime_fetch_args ${GIGAAM_FETCHCONTENT_ARGS})
 
     if (ONNXRUNTIME_URL_HASH)
         list(APPEND _onnxruntime_fetch_args URL_HASH "${ONNXRUNTIME_URL_HASH}")
@@ -81,28 +86,28 @@ set_target_properties(onnxruntime PROPERTIES
 FetchContent_Declare(
     CLI11
     URL https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.4.2.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+    ${GIGAAM_FETCHCONTENT_ARGS}
 )
 FetchContent_MakeAvailable(CLI11)
 
 FetchContent_Declare(
     cpphttplib
     URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.15.3.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+    ${GIGAAM_FETCHCONTENT_ARGS}
 )
 FetchContent_MakeAvailable(cpphttplib)
 
 FetchContent_Declare(
     nlohmann_json
     URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+    ${GIGAAM_FETCHCONTENT_ARGS}
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
 FetchContent_Declare(
     miniaudio_src
     URL https://github.com/mackron/miniaudio/archive/refs/tags/0.11.21.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+    ${GIGAAM_FETCHCONTENT_ARGS}
 )
 FetchContent_MakeAvailable(miniaudio_src)
 

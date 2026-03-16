@@ -1,0 +1,6 @@
+.git
+build
+build-*
+data
+models
+.DS_Store

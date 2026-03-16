@@ -27,21 +27,6 @@ ParsedUrl ParseUrl(const std::string &url) {
     return {match[1].str(), match[2].str(), match[3].str()};
 }
 
-std::string ResolveRedirect(const std::string &current_url, const std::string &location) {
-    if (location.rfind("http://", 0) == 0 || location.rfind("https://", 0) == 0) {
-        return location;
-    }
-
-    const auto current = ParseUrl(current_url);
-    if (!location.empty() && location.front() == '/') {
-        return current.scheme + "://" + current.host + location;
-    }
-
-    const auto slash = current.path_and_query.find_last_of('/');
-    const std::string base_path = slash == std::string::npos ? "/" : current.path_and_query.substr(0, slash + 1);
-    return current.scheme + "://" + current.host + base_path + location;
-}
-
 std::string ShellEscape(const std::string &value) {
     std::string escaped = "'";
     for (char ch : value) {
@@ -67,14 +52,14 @@ httplib::Result PerformGet(const std::string &url,
     if (parsed.scheme == "https") {
         httplib::SSLClient client(parsed.host);
         client.enable_server_certificate_verification(true);
-        client.set_follow_location(false);
+        client.set_follow_location(true);
         client.set_connection_timeout(30, 0);
         client.set_read_timeout(300, 0);
         client.set_write_timeout(300, 0);
         result = client.Get(parsed.path_and_query.c_str(), receiver);
     } else {
         httplib::Client client(parsed.host);
-        client.set_follow_location(false);
+        client.set_follow_location(true);
         client.set_connection_timeout(30, 0);
         client.set_read_timeout(300, 0);
         client.set_write_timeout(300, 0);
@@ -82,14 +67,6 @@ httplib::Result PerformGet(const std::string &url,
     }
     if (!result) {
         throw std::runtime_error("HTTP GET failed for: " + url);
-    }
-
-    if (result->status >= 300 && result->status < 400) {
-        const auto location = result->get_header_value("Location");
-        if (location.empty()) {
-            throw std::runtime_error("Redirect response without Location header: " + url);
-        }
-        return PerformGet(ResolveRedirect(url, location), receiver, redirects_left - 1);
     }
 
     if (result->status < 200 || result->status >= 300) {

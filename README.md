@@ -59,6 +59,22 @@ cmake -S . -B build \
 cmake --build build -j
 ```
 
+### Повторить конфигурацию в Docker с `cmake 3.22`
+
+Если нужно проверить поведение именно на `cmake 3.22`, можно запустить чистую конфигурацию в контейнере:
+
+```bash
+./scripts/repro-cmake322.sh
+```
+
+С дополнительными аргументами для `cmake`:
+
+```bash
+./scripts/repro-cmake322.sh -DGIGAAM_FETCH_ONNXRUNTIME=OFF
+```
+
+По умолчанию скрипт создаёт образ `gigaam-cmake322` и конфигурирует проект в `build-cmake322`.
+
 ## Quick Start
 
 ### У меня есть MP3 и я хочу получить транскрибацию
