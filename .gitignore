@@ -39,3 +39,16 @@
 
 # debug information files
 *.dwo
+
+# Local build and test artifacts
+/build*/
+/data/
+/models/
+/tmp/
+*.onnx
+*.wav
+*.mp3
+*.flac
+*.ogg
+*vocab*.txt
+manifest.tsv
